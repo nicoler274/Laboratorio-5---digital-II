@@ -1,0 +1,141 @@
+//******************************************/
+// Universidad del Valle de Guatemala
+// BE3029 - Electronica Digital 2
+// Nicole Rodriguez
+// 21/07/2025
+// Laboratorio 5
+// MCU: ESP32 dev kit 1.0
+//******************************************/
+
+//******************************************/
+// Librerias
+//******************************************/
+#include <Arduino.h>
+#include <stdint.h>
+#include <driver/ledc.h>
+//******************************************/
+// Definiciones
+//******************************************/
+#define led1 13
+#define led2 12
+#define led3 25
+#define butSelec 18  // B3
+#define butBri   5   // B4
+
+//Paso #2 definir el canal
+// Canales PWM
+#define pwmChannel1 0
+#define pwmChannel2 1
+#define pwmChannel3 2
+
+//Paso #3 escoger la frecuencia
+#define freqPWM 5000
+//Paso #4 escoger resolucion de pwm
+#define resPWM 8
+
+
+//******************************************/
+// Prototipos de funciones
+//******************************************/
+void initPWM();
+
+//******************************************/
+// Variables globales
+//******************************************/
+// Botones
+volatile bool flagSelec = false;
+volatile bool flagBri = false;
+// Manejo de intensidad del brillo del led
+uint8_t colorActual = 0; 
+uint8_t nivelBrillo[3] = {0, 0, 0};
+const uint8_t brillo[] = {0, 85, 170, 255};
+const uint8_t numBrillos = sizeof(brillo) / sizeof(brillo[0]);
+
+// Anti-rebote
+volatile unsigned long ultimaInterrupcionSelec = 0;
+volatile unsigned long ultimaInterrupcionBri = 0;
+const unsigned long tiempoRebote = 200; // ms
+
+//******************************************/
+// ISRs Rutinas de Interrupcion
+//******************************************/
+void IRAM_ATTR ISR_cambioColor() {
+  unsigned long tiempoActual = millis();
+  if (tiempoActual - ultimaInterrupcionSelec > tiempoRebote) {
+    flagSelec = true;
+    ultimaInterrupcionSelec = tiempoActual;
+  }
+}
+
+void IRAM_ATTR ISR_cambioBrillo() {
+  unsigned long tiempoActual = millis();
+  if (tiempoActual - ultimaInterrupcionBri > tiempoRebote) {
+    flagBri = true;
+    ultimaInterrupcionBri = tiempoActual;
+  }
+}
+
+//******************************************/
+// Configuracion
+//******************************************/
+void setup() {
+  // LEDs pinout
+  pinMode(led1, OUTPUT);
+  pinMode(led2, OUTPUT);
+  pinMode(led3, OUTPUT);
+  pinMode(butSelec, INPUT_PULLUP);
+  pinMode(butBri, INPUT_PULLUP);
+
+  initPWM();
+
+  // Interrupciones en flanco de bajada (botón presionado)
+  attachInterrupt(digitalPinToInterrupt(butSelec), ISR_cambioColor, FALLING);
+  attachInterrupt(digitalPinToInterrupt(butBri), ISR_cambioBrillo, FALLING);
+}
+//******************************************/
+// Loop Principal
+//******************************************/
+void loop() {
+  // Cambio de led
+  if (flagSelec) {
+    flagSelec = false;
+    colorActual = (colorActual + 1) % 3;
+  }
+
+  // Cambio de intensidad del brillo
+  if (flagBri) {
+    flagBri = false;
+    nivelBrillo[colorActual] = (nivelBrillo[colorActual] + 1) % numBrillos;
+    uint8_t valorPWM = brillo[nivelBrillo[colorActual]];
+
+    switch (colorActual) {
+      case 0: ledcWrite(pwmChannel1, valorPWM); break;
+      case 1: ledcWrite(pwmChannel2, valorPWM); break;
+      case 2: ledcWrite(pwmChannel3, valorPWM); break;
+    }
+  }
+}
+//******************************************/
+// Otras funciones
+//******************************************/
+
+void initPWM() {
+  ledcSetup(pwmChannel1, freqPWM, resPWM);
+  ledcAttachPin(led1, pwmChannel1);
+  ledcWrite(pwmChannel1, 0);
+
+  ledcSetup(pwmChannel2, freqPWM, resPWM);
+  ledcAttachPin(led2, pwmChannel2);
+  ledcWrite(pwmChannel2, 0);
+
+  ledcSetup(pwmChannel3, freqPWM, resPWM);
+  ledcAttachPin(led3, pwmChannel3);
+  ledcWrite(pwmChannel3, 0);
+}
+
+  //Resolucion
+  //16 bits -> 2^16 -> 0.   -65535
+  //.                  0% 
+  //Paso #4 configurar el pwm
+  //Paso #5 configurar GPIO de salida de pwm
+  //Paso #6 configurar ciclo de trabajo
