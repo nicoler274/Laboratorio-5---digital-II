@@ -6,7 +6,6 @@
 // Laboratorio 5
 // MCU: ESP32 dev kit 1.0
 //******************************************/
-
 //******************************************/
 // Librerías
 //******************************************/
@@ -71,11 +70,11 @@ const uint8_t numBrillos = sizeof(brillo) / sizeof(brillo[0]);
 
 // Servo posiciones (16 bits)
 uint32_t posiciones[] = {
-  1638, // 0.5 ms (posición 0)
+  1638, // 0.5 ms (posición 0 - extremo izquierdo)
   3277, // 1.0 ms (posición 1)
-  4915, // 1.5 ms (posición 2)
+  4915, // 1.5 ms (posición 2 - centro)
   6553, // 2.0 ms (posición 3)
-  8192  // 2.5 ms (posición 4)
+  8192  // 2.5 ms (posición 4 - extremo derecho)
 };
 uint8_t posicionActual = 2; // Centro (posición 2)
 uint32_t pulsoServo = posiciones[2]; // Pulso actual
@@ -185,20 +184,20 @@ void actualizarIndicacionServo() {
   // Primero apagamos todos los LEDs
   apagarLEDs();
   
-  // Luego encendemos según posición
+  // Luego encendemos solo el LED correspondiente a la posición actual
   switch(posicionActual) {
-    case 0: // Posición más a la izquierda - todos apagados
+    case 0: // Extremo izquierdo - todos apagados
       break;
-    case 1: // Posición +1 a la izquierda - Rojo
+    case 1: // Posición 1 - solo LED Rojo
       ledcWrite(pwmChannelR, 255);
       break;
-    case 2: // Posición central - Verde
+    case 2: // Centro - solo LED Verde
       ledcWrite(pwmChannelG, 255);
       break;
-    case 3: // Posición +1 a la derecha - Azul
+    case 3: // Posición 3 - solo LED Azul
       ledcWrite(pwmChannelB, 255);
       break;
-    case 4: // Posición más a la derecha - todos apagados
+    case 4: // Extremo derecho - todos apagados
       break;
   }
 }
@@ -233,13 +232,13 @@ void loop() {
     // Transición al modo servo
     if (modoActual == 3) {
       modoServoActivo = true;
-      apagarLEDs(); // Apagar todos los LEDs al entrar en modo servo
+      apagarLEDs(); // Apagar todos los LEDs inmediatamente
       actualizarIndicacionServo(); // Mostrar posición actual
     } 
     // Transición desde modo servo a otro modo
     else if (modoAnterior == 3) {
       modoServoActivo = false;
-      actualizarLEDs(); // Restaurar brillo de LEDs
+      actualizarLEDs(); // Restaurar brillo de LEDs según configuración
     }
   }
 
@@ -272,19 +271,19 @@ void loop() {
         flagBri = false;
       }
       
-      // Movimiento servo con indicación LED
+      // Movimiento servo con indicación LED exacta
       if (moverDerecha) {
         moverDerecha = false;
         if (posicionActual < 4) {
           posicionActual++;
-          actualizarIndicacionServo();
+          actualizarIndicacionServo(); // Actualizar LEDs inmediatamente
         }
       }
       if (moverIzquierda) {
         moverIzquierda = false;
         if (posicionActual > 0) {
           posicionActual--;
-          actualizarIndicacionServo();
+          actualizarIndicacionServo(); // Actualizar LEDs inmediatamente
         }
       }
       break;
