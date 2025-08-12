@@ -1,0 +1,209 @@
+/******************************************/
+// Universidad del Valle de Guatemala
+// BE3029 - Electronica Digital 2
+// Nicole Rodriguez
+// 21/07/2025
+// Laboratorio 5
+// MCU: ESP32 dev kit 1.0
+//******************************************/
+
+//******************************************/
+// Librerías
+//******************************************/
+#include <Arduino.h>
+#include <stdint.h>
+#include <driver/ledc.h>
+
+//******************************************/
+// Definiciones
+//******************************************/
+// Pines LEDs
+#define ledR 13
+#define ledG 12
+#define ledB 25
+
+// Pines botones
+#define butSelec 18     // Selección de modo/LED
+#define butBri   5      // Ajuste de brillo en modos LED
+#define butDerecha 19
+#define butIzquierda 21
+
+// Servo
+#define servo_pin 14
+
+// PWM LEDs
+#define pwmChannelR 0
+#define pwmChannelG 1
+#define pwmChannelB 2
+
+#define freqPWM_LED 5000
+#define resPWM_LED 8
+
+// PWM Servo
+#define pwmChannelServo 3
+#define freqPWM_Servo 50
+#define resPWM_Servo 16
+
+//******************************************/
+// Variables globales
+//******************************************/
+// Estados de botones
+volatile bool flagSelec = false;
+volatile bool flagBri   = false;
+volatile bool moverDerecha = false;
+volatile bool moverIzquierda = false;
+
+// Anti-rebote
+volatile unsigned long ultimaInterrupcionSelec = 0;
+volatile unsigned long ultimaInterrupcionBri   = 0;
+volatile unsigned long ultimaInterrupcionDer   = 0;
+volatile unsigned long ultimaInterrupcionIzq   = 0;
+const unsigned long tiempoRebote = 200; // ms
+
+// Modo actual (0=Rojo, 1=Verde, 2=Azul, 3=Servo)
+uint8_t modoActual = 0;
+
+// Brillo LEDs
+uint8_t nivelBrillo[3] = {0, 0, 0};
+const uint8_t brillo[] = {0, 85, 170, 255};
+const uint8_t numBrillos = sizeof(brillo) / sizeof(brillo[0]);
+
+// Servo posiciones (16 bits)
+uint32_t posiciones[] = {
+  1638, // 0.5 ms
+  3277, // 1.0 ms
+  4915, // 1.5 ms
+  6553, // 2.0 ms
+  8192  // 2.5 ms
+};
+uint8_t posicionActual = 2; // Centro
+
+//******************************************/
+// ISRs
+//******************************************/
+void IRAM_ATTR ISR_cambioModo() {
+  unsigned long t = millis();
+  if (t - ultimaInterrupcionSelec > tiempoRebote) {
+    flagSelec = true;
+    ultimaInterrupcionSelec = t;
+  }
+}
+
+void IRAM_ATTR ISR_cambioBrillo() {
+  unsigned long t = millis();
+  if (t - ultimaInterrupcionBri > tiempoRebote) {
+    flagBri = true;
+    ultimaInterrupcionBri = t;
+  }
+}
+
+void IRAM_ATTR ISR_Derecha() {
+  unsigned long t = millis();
+  if (t - ultimaInterrupcionDer > tiempoRebote) {
+    moverDerecha = true;
+    ultimaInterrupcionDer = t;
+  }
+}
+
+void IRAM_ATTR ISR_Izquierda() {
+  unsigned long t = millis();
+  if (t - ultimaInterrupcionIzq > tiempoRebote) {
+    moverIzquierda = true;
+    ultimaInterrupcionIzq = t;
+  }
+}
+
+//******************************************/
+// Inicialización PWM
+//******************************************/
+void initPWM() {
+  // LEDs
+  ledcSetup(pwmChannelR, freqPWM_LED, resPWM_LED);
+  ledcAttachPin(ledR, pwmChannelR);
+  ledcWrite(pwmChannelR, 0);
+
+  ledcSetup(pwmChannelG, freqPWM_LED, resPWM_LED);
+  ledcAttachPin(ledG, pwmChannelG);
+  ledcWrite(pwmChannelG, 0);
+
+  ledcSetup(pwmChannelB, freqPWM_LED, resPWM_LED);
+  ledcAttachPin(ledB, pwmChannelB);
+  ledcWrite(pwmChannelB, 0);
+
+  // Servo
+  ledcSetup(pwmChannelServo, freqPWM_Servo, resPWM_Servo);
+  ledcAttachPin(servo_pin, pwmChannelServo);
+  ledcWrite(pwmChannelServo, posiciones[posicionActual]);
+}
+
+//******************************************/
+// Setup
+//******************************************/
+void setup() {
+  pinMode(butSelec, INPUT_PULLUP);
+  pinMode(butBri, INPUT_PULLUP);
+  pinMode(butDerecha, INPUT_PULLUP);
+  pinMode(butIzquierda, INPUT_PULLUP);
+
+  initPWM();
+
+  attachInterrupt(digitalPinToInterrupt(butSelec), ISR_cambioModo, FALLING);
+  attachInterrupt(digitalPinToInterrupt(butBri), ISR_cambioBrillo, FALLING);
+  attachInterrupt(digitalPinToInterrupt(butDerecha), ISR_Derecha, FALLING);
+  attachInterrupt(digitalPinToInterrupt(butIzquierda), ISR_Izquierda, FALLING);
+}
+
+//******************************************/
+// Loop principal
+//******************************************/
+void loop() {
+  // Cambio de modo
+  if (flagSelec) {
+    flagSelec = false;
+    modoActual = (modoActual + 1) % 4;
+  }
+
+  switch (modoActual) {
+    case 0: // LED rojo
+    case 1: // LED verde
+    case 2: // LED azul
+      if (flagBri) {
+        flagBri = false;
+        nivelBrillo[modoActual] = (nivelBrillo[modoActual] + 1) % numBrillos;
+        uint8_t valorPWM = brillo[nivelBrillo[modoActual]];
+        if (modoActual == 0) ledcWrite(pwmChannelR, valorPWM);
+        if (modoActual == 1) ledcWrite(pwmChannelG, valorPWM);
+        if (modoActual == 2) ledcWrite(pwmChannelB, valorPWM);
+      }
+
+      if (moverDerecha) {
+        moverDerecha = false;
+        if (posicionActual < 4) posicionActual++;
+        ledcWrite(pwmChannelServo, posiciones[posicionActual]);
+      }
+      if (moverIzquierda) {
+        moverIzquierda = false;
+        if (posicionActual > 0) posicionActual--;
+        ledcWrite(pwmChannelServo, posiciones[posicionActual]);
+      }
+      break;
+
+    case 3: // Modo servo dependiente
+      if (moverDerecha) {
+        moverDerecha = false;
+        if (posicionActual < 4) posicionActual++;
+        ledcWrite(pwmChannelServo, posiciones[posicionActual]);
+      }
+      if (moverIzquierda) {
+        moverIzquierda = false;
+        if (posicionActual > 0) posicionActual--;
+        ledcWrite(pwmChannelServo, posiciones[posicionActual]);
+      }
+
+      // Mostrar posición en LEDs (ejemplo simple)
+      ledcWrite(pwmChannelR, (posicionActual == 0) ? 255 : 0);
+      ledcWrite(pwmChannelG, (posicionActual == 2) ? 255 : 0);
+      ledcWrite(pwmChannelB, (posicionActual == 4) ? 255 : 0);
+      break;
+  }
+}
