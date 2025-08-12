@@ -1,0 +1,115 @@
+//******************************************/
+// Universidad del Valle de Guatemala
+// BE3029 - Electronica Digital 2
+// Nicole Rodriguez
+// 21/07/2025
+// Laboratorio 5
+// MCU: ESP32 dev kit 1.0
+//******************************************/
+
+//******************************************/
+// Librerias
+//******************************************/
+#include <Arduino.h>
+#include <stdint.h>
+#include <driver/ledc.h>
+//******************************************/
+// Definiciones
+//******************************************/
+#define servo_pin 14
+#define butDerecha 19
+#define butIzquierda 21
+
+//Paso #2 definir el canal
+// ===== Configuración PWM =====
+#define pwmChannel 0
+#define freqPWM 50   // Hz
+#define resPWM 16    // bits (0-65535)
+
+//******************************************/
+// Prototipos de funciones
+//******************************************/
+void initPWM();
+
+//******************************************/
+// Variables globales
+//******************************************/
+volatile bool moverDerecha = false;
+volatile bool moverIzquierda = false;
+volatile uint32_t ultimaInterrupcionDer = 0;
+volatile uint32_t ultimaInterrupcionIzq = 0;
+const uint32_t tiempoRebote = 200; // ms
+
+// 5 posiciones predefinidas (dutyCycle en 16 bits)
+uint32_t posiciones[] = {
+  1638, // 0.5 ms
+  3277, // 1.0 ms
+  4915, // 1.5 ms
+  6553, // 2.0 ms
+  8192  // 2.5 ms
+};
+
+uint8_t posicionActual = 2; // Arranca en el centro (1.5 ms)
+
+//******************************************/
+// ISRs Rutinas de Interrupcion
+//******************************************/
+void IRAM_ATTR ISR_Derecha() {
+  uint32_t tiempo = millis();
+  if (tiempo - ultimaInterrupcionDer > tiempoRebote) {
+    moverDerecha = true;
+    ultimaInterrupcionDer = tiempo;
+  }
+}
+
+void IRAM_ATTR ISR_Izquierda() {
+  uint32_t tiempo = millis();
+  if (tiempo - ultimaInterrupcionIzq > tiempoRebote) {
+    moverIzquierda = true;
+    ultimaInterrupcionIzq = tiempo;
+  }
+}
+
+//******************************************/
+// Configuracion
+//******************************************/
+void setup() {
+  pinMode(butDerecha, INPUT_PULLUP);
+  pinMode(butIzquierda, INPUT_PULLUP);
+
+  attachInterrupt(digitalPinToInterrupt(butDerecha), ISR_Derecha, FALLING);
+  attachInterrupt(digitalPinToInterrupt(butIzquierda), ISR_Izquierda, FALLING);
+
+  initPWM();
+}
+
+//******************************************/
+// Loop Principal
+//******************************************/
+void loop() {
+  if (moverDerecha) {
+    moverDerecha = false;
+    if (posicionActual < 4) {
+      posicionActual++;
+    }
+    ledcWrite(pwmChannel, posiciones[posicionActual]);
+  }
+
+  if (moverIzquierda) {
+    moverIzquierda = false;
+    if (posicionActual > 0) {
+      posicionActual--;
+    }
+    ledcWrite(pwmChannel, posiciones[posicionActual]);
+  }
+}
+//******************************************/
+// Otras funciones
+//******************************************/
+
+// ===== Inicializar PWM =====
+void initPWM() {
+  ledcSetup(pwmChannel, freqPWM, resPWM);
+  ledcAttachPin(servo_pin, pwmChannel);
+  ledcWrite(pwmChannel, posiciones[posicionActual]);
+}
