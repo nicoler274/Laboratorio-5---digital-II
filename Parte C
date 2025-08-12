@@ -79,43 +79,43 @@ uint32_t posiciones[] = {
 uint8_t posicionActual = 2; // Centro (posición 2)
 uint32_t pulsoServo = posiciones[2]; // Pulso actual
 
-// Movimiento suave servo
-const int pasoServo = 50; // microsegundos por actualización
+// Movimiento servo
+uint8_t pasoServo = 50; // microsegundos por actualización
 unsigned long ultimaActualizacionServo = 0;
-const int intervaloServo = 20; // ms
+uint8_t intervaloServo = 20; // ms
 
 //******************************************/
 // ISRs
 //******************************************/
 void IRAM_ATTR ISR_cambioModo() {
-  unsigned long t = millis();
-  if (t - ultimaInterrupcionSelec > tiempoRebote) {
+  unsigned long tiempo = millis();
+  if (tiempo - ultimaInterrupcionSelec > tiempoRebote) {
     flagSelec = true;
-    ultimaInterrupcionSelec = t;
+    ultimaInterrupcionSelec = tiempo;
   }
 }
 
 void IRAM_ATTR ISR_cambioBrillo() {
-  unsigned long t = millis();
-  if (t - ultimaInterrupcionBri > tiempoRebote) {
+  unsigned long tiempo = millis();
+  if (tiempo - ultimaInterrupcionBri > tiempoRebote) {
     flagBri = true;
-    ultimaInterrupcionBri = t;
+    ultimaInterrupcionBri = tiempo;
   }
 }
 
 void IRAM_ATTR ISR_Derecha() {
-  unsigned long t = millis();
-  if (t - ultimaInterrupcionDer > tiempoRebote) {
+  unsigned long tiempo = millis();
+  if (tiempo - ultimaInterrupcionDer > tiempoRebote) {
     moverDerecha = true;
-    ultimaInterrupcionDer = t;
+    ultimaInterrupcionDer = tiempo;
   }
 }
 
 void IRAM_ATTR ISR_Izquierda() {
-  unsigned long t = millis();
-  if (t - ultimaInterrupcionIzq > tiempoRebote) {
+  unsigned long tiempo = millis();
+  if (tiempo - ultimaInterrupcionIzq > tiempoRebote) {
     moverIzquierda = true;
-    ultimaInterrupcionIzq = t;
+    ultimaInterrupcionIzq = tiempo;
   }
 }
 
@@ -161,7 +161,7 @@ void apagarLEDs() {
 }
 
 //******************************************/
-// Mover servo suavemente
+// Mover servo 
 //******************************************/
 void moverServoSuave(uint32_t objetivo) {
   if (millis() - ultimaActualizacionServo >= intervaloServo) {
@@ -171,9 +171,7 @@ void moverServoSuave(uint32_t objetivo) {
       if (pulsoServo > objetivo) pulsoServo = objetivo;
     } else if (pulsoServo > objetivo) {
       pulsoServo -= pasoServo;
-      if (pulsoServo < objetivo) pulsoServo = objetivo;
-    }
-    ledcWrite(pwmChannelServo, pulsoServo);
+    } ledcWrite(pwmChannelServo, pulsoServo);
   }
 }
 
@@ -183,21 +181,28 @@ void moverServoSuave(uint32_t objetivo) {
 void actualizarIndicacionServo() {
   // Primero apagamos todos los LEDs
   apagarLEDs();
-  
   // Luego encendemos solo el LED correspondiente a la posición actual
   switch(posicionActual) {
     case 0: // Extremo izquierdo - todos apagados
+      apagarLEDs();
       break;
     case 1: // Posición 1 - solo LED Rojo
       ledcWrite(pwmChannelR, 255);
+      ledcWrite(pwmChannelG, 0);
+      ledcWrite(pwmChannelB, 0);
       break;
     case 2: // Centro - solo LED Verde
       ledcWrite(pwmChannelG, 255);
+      ledcWrite(pwmChannelR, 0);
+      ledcWrite(pwmChannelB, 0);
       break;
     case 3: // Posición 3 - solo LED Azul
       ledcWrite(pwmChannelB, 255);
+      ledcWrite(pwmChannelG, 0);
+      ledcWrite(pwmChannelR, 0);
       break;
     case 4: // Extremo derecho - todos apagados
+    apagarLEDs();
       break;
   }
 }
@@ -232,7 +237,6 @@ void loop() {
     // Transición al modo servo
     if (modoActual == 3) {
       modoServoActivo = true;
-      apagarLEDs(); // Apagar todos los LEDs inmediatamente
       actualizarIndicacionServo(); // Mostrar posición actual
     } 
     // Transición desde modo servo a otro modo
@@ -245,7 +249,41 @@ void loop() {
   // Manejo de cada modo
   switch (modoActual) {
     case 0: // Modo LED Rojo
+          // Ajuste de brillo para el LED seleccionado
+      if (flagBri) {
+        flagBri = false;
+        nivelBrillo[modoActual] = (nivelBrillo[modoActual] + 1) % numBrillos;
+        actualizarLEDs();
+      }
+      
+      // Movimiento servo independiente
+      if (moverDerecha) {
+        moverDerecha = false;
+        if (posicionActual < 4) posicionActual++;
+      }
+      if (moverIzquierda) {
+        moverIzquierda = false;
+        if (posicionActual > 0) posicionActual--;
+      }
+      break;
     case 1: // Modo LED Verde
+          // Ajuste de brillo para el LED seleccionado
+      if (flagBri) {
+        flagBri = false;
+        nivelBrillo[modoActual] = (nivelBrillo[modoActual] + 1) % numBrillos;
+        actualizarLEDs();
+      }
+      
+      // Movimiento servo independiente
+      if (moverDerecha) {
+        moverDerecha = false;
+        if (posicionActual < 4) posicionActual++;
+      }
+      if (moverIzquierda) {
+        moverIzquierda = false;
+        if (posicionActual > 0) posicionActual--;
+      }
+      break;
     case 2: // Modo LED Azul
       // Ajuste de brillo para el LED seleccionado
       if (flagBri) {
@@ -266,7 +304,7 @@ void loop() {
       break;
       
     case 3: // Modo Servo
-      // Botón de brillo no hace nada en este modo
+      // Botón de brillo no realiza nada en este modo
       if (flagBri) {
         flagBri = false;
       }
