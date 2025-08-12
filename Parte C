@@ -17,18 +17,18 @@
 // Definiciones
 //******************************************/
 // Pines LEDs
-#define ledR 13
-#define ledG 12
-#define ledB 25
+#define ledR 5
+#define ledG 2
+#define ledB 15
 
 // Pines botones
-#define butSelec     18 // Selección de modo/LED
-#define butBri       5  // Ajuste de brillo en modos LED
-#define butDerecha   19
-#define butIzquierda 21
+#define butSelec     34 // Selección de modo/LED
+#define butBri       33  // Ajuste de brillo en modos LED
+#define butDerecha   27
+#define butIzquierda 13
 
 // Servo
-#define servo_pin 14
+#define servo_pin 23
 
 // PWM LEDs
 #define pwmChannelR 0
