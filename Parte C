@@ -1,4 +1,4 @@
-/******************************************/
+//******************************************/
 // Universidad del Valle de Guatemala
 // BE3029 - Electronica Digital 2
 // Nicole Rodriguez
@@ -23,9 +23,9 @@
 #define ledB 25
 
 // Pines botones
-#define butSelec 18     // Selección de modo/LED
-#define butBri   5      // Ajuste de brillo en modos LED
-#define butDerecha 19
+#define butSelec     18 // Selección de modo/LED
+#define butBri       5  // Ajuste de brillo en modos LED
+#define butDerecha   19
 #define butIzquierda 21
 
 // Servo
@@ -62,6 +62,7 @@ const unsigned long tiempoRebote = 200; // ms
 
 // Modo actual (0=Rojo, 1=Verde, 2=Azul, 3=Servo)
 uint8_t modoActual = 0;
+bool modoServoActivo = false; // Bandera para controlar transiciones
 
 // Brillo LEDs
 uint8_t nivelBrillo[3] = {0, 0, 0};
@@ -70,13 +71,19 @@ const uint8_t numBrillos = sizeof(brillo) / sizeof(brillo[0]);
 
 // Servo posiciones (16 bits)
 uint32_t posiciones[] = {
-  1638, // 0.5 ms
-  3277, // 1.0 ms
-  4915, // 1.5 ms
-  6553, // 2.0 ms
-  8192  // 2.5 ms
+  1638, // 0.5 ms (posición 0)
+  3277, // 1.0 ms (posición 1)
+  4915, // 1.5 ms (posición 2)
+  6553, // 2.0 ms (posición 3)
+  8192  // 2.5 ms (posición 4)
 };
-uint8_t posicionActual = 2; // Centro
+uint8_t posicionActual = 2; // Centro (posición 2)
+uint32_t pulsoServo = posiciones[2]; // Pulso actual
+
+// Movimiento suave servo
+const int pasoServo = 50; // microsegundos por actualización
+unsigned long ultimaActualizacionServo = 0;
+const int intervaloServo = 20; // ms
 
 //******************************************/
 // ISRs
@@ -137,6 +144,66 @@ void initPWM() {
 }
 
 //******************************************/
+// Actualizar LEDs según brillo guardado
+//******************************************/
+void actualizarLEDs() {
+  ledcWrite(pwmChannelR, brillo[nivelBrillo[0]]);
+  ledcWrite(pwmChannelG, brillo[nivelBrillo[1]]);
+  ledcWrite(pwmChannelB, brillo[nivelBrillo[2]]);
+}
+
+//******************************************/
+// Apagar todos los LEDs
+//******************************************/
+void apagarLEDs() {
+  ledcWrite(pwmChannelR, 0);
+  ledcWrite(pwmChannelG, 0);
+  ledcWrite(pwmChannelB, 0);
+}
+
+//******************************************/
+// Mover servo suavemente
+//******************************************/
+void moverServoSuave(uint32_t objetivo) {
+  if (millis() - ultimaActualizacionServo >= intervaloServo) {
+    ultimaActualizacionServo = millis();
+    if (pulsoServo < objetivo) {
+      pulsoServo += pasoServo;
+      if (pulsoServo > objetivo) pulsoServo = objetivo;
+    } else if (pulsoServo > objetivo) {
+      pulsoServo -= pasoServo;
+      if (pulsoServo < objetivo) pulsoServo = objetivo;
+    }
+    ledcWrite(pwmChannelServo, pulsoServo);
+  }
+}
+
+//******************************************/
+// Actualizar indicación LED en modo Servo
+//******************************************/
+void actualizarIndicacionServo() {
+  // Primero apagamos todos los LEDs
+  apagarLEDs();
+  
+  // Luego encendemos según posición
+  switch(posicionActual) {
+    case 0: // Posición más a la izquierda - todos apagados
+      break;
+    case 1: // Posición +1 a la izquierda - Rojo
+      ledcWrite(pwmChannelR, 255);
+      break;
+    case 2: // Posición central - Verde
+      ledcWrite(pwmChannelG, 255);
+      break;
+    case 3: // Posición +1 a la derecha - Azul
+      ledcWrite(pwmChannelB, 255);
+      break;
+    case 4: // Posición más a la derecha - todos apagados
+      break;
+  }
+}
+
+//******************************************/
 // Setup
 //******************************************/
 void setup() {
@@ -160,50 +227,69 @@ void loop() {
   // Cambio de modo
   if (flagSelec) {
     flagSelec = false;
+    uint8_t modoAnterior = modoActual;
     modoActual = (modoActual + 1) % 4;
+    
+    // Transición al modo servo
+    if (modoActual == 3) {
+      modoServoActivo = true;
+      apagarLEDs(); // Apagar todos los LEDs al entrar en modo servo
+      actualizarIndicacionServo(); // Mostrar posición actual
+    } 
+    // Transición desde modo servo a otro modo
+    else if (modoAnterior == 3) {
+      modoServoActivo = false;
+      actualizarLEDs(); // Restaurar brillo de LEDs
+    }
   }
 
+  // Manejo de cada modo
   switch (modoActual) {
-    case 0: // LED rojo
-    case 1: // LED verde
-    case 2: // LED azul
+    case 0: // Modo LED Rojo
+    case 1: // Modo LED Verde
+    case 2: // Modo LED Azul
+      // Ajuste de brillo para el LED seleccionado
       if (flagBri) {
         flagBri = false;
         nivelBrillo[modoActual] = (nivelBrillo[modoActual] + 1) % numBrillos;
-        uint8_t valorPWM = brillo[nivelBrillo[modoActual]];
-        if (modoActual == 0) ledcWrite(pwmChannelR, valorPWM);
-        if (modoActual == 1) ledcWrite(pwmChannelG, valorPWM);
-        if (modoActual == 2) ledcWrite(pwmChannelB, valorPWM);
+        actualizarLEDs();
       }
-
+      
+      // Movimiento servo independiente
       if (moverDerecha) {
         moverDerecha = false;
         if (posicionActual < 4) posicionActual++;
-        ledcWrite(pwmChannelServo, posiciones[posicionActual]);
       }
       if (moverIzquierda) {
         moverIzquierda = false;
         if (posicionActual > 0) posicionActual--;
-        ledcWrite(pwmChannelServo, posiciones[posicionActual]);
       }
       break;
-
-    case 3: // Modo servo dependiente
+      
+    case 3: // Modo Servo
+      // Botón de brillo no hace nada en este modo
+      if (flagBri) {
+        flagBri = false;
+      }
+      
+      // Movimiento servo con indicación LED
       if (moverDerecha) {
         moverDerecha = false;
-        if (posicionActual < 4) posicionActual++;
-        ledcWrite(pwmChannelServo, posiciones[posicionActual]);
+        if (posicionActual < 4) {
+          posicionActual++;
+          actualizarIndicacionServo();
+        }
       }
       if (moverIzquierda) {
         moverIzquierda = false;
-        if (posicionActual > 0) posicionActual--;
-        ledcWrite(pwmChannelServo, posiciones[posicionActual]);
+        if (posicionActual > 0) {
+          posicionActual--;
+          actualizarIndicacionServo();
+        }
       }
-
-      // Mostrar posición en LEDs (ejemplo simple)
-      ledcWrite(pwmChannelR, (posicionActual == 0) ? 255 : 0);
-      ledcWrite(pwmChannelG, (posicionActual == 2) ? 255 : 0);
-      ledcWrite(pwmChannelB, (posicionActual == 4) ? 255 : 0);
       break;
   }
+
+  // Mover servo suavemente a la posición actual
+  moverServoSuave(posiciones[posicionActual]);
 }
